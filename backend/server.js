@@ -137,3 +137,6 @@ loadInitialCertificate();
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+app.get('/health', (req, res) => {
+  res.json({ status: "OK" });
+});
