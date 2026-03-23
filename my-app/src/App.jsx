@@ -7,8 +7,8 @@ function App() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
-  // ✅ PUT YOUR REAL RENDER BACKEND URL HERE
-  const API_BASE = 'https://certificate-verification-2.onrender.com';
+  // ✅ Your backend URL
+  const API_BASE = 'https://certificate-verification-2.onrender.com'; // Change to deployed backend if needed
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
@@ -37,14 +37,11 @@ function App() {
 
       const data = await response.json();
 
-      // ✅ FIXED CONDITION
       if (data.valid !== undefined) {
         setResult({
           type: data.valid ? 'success' : 'invalid',
-          message: data.valid
-            ? 'Valid Certificate ✅'
-            : 'Invalid Certificate ❌',
-          details: data.details || null
+          message: data.valid ? 'Valid Certificate ✅' : 'Invalid Certificate ❌',
+          details: data.details || { filename: file.name, hash: 'N/A' }
         });
       } else {
         setError(data.error || 'Request failed');
@@ -61,70 +58,38 @@ function App() {
     <div className="app">
       <header className="header">
         <h1>🔗 Certificate Verification System</h1>
-        <p>Blockchain-powered integrity check using SHA-256 hashing</p>
+        <p>Blockchain-like integrity check using SHA-256 hashing</p>
       </header>
 
       <main className="main">
         <div className="upload-section">
-          <div className="file-input-wrapper">
-            <input
-              id="certificate"
-              type="file"
-              accept=".pdf,image/*"
-              onChange={handleFileChange}
-              className="file-input"
-              disabled={loading}
-            />
-            <label htmlFor="certificate" className="file-label">
-              {file ? file.name : 'Choose certificate file (PDF/Image)...'}
-            </label>
-          </div>
-
-          <button
-            className="submit-btn"
-            onClick={submitCertificate}
-            disabled={!file || loading}
-          >
+          <input
+            type="file"
+            accept=".pdf,image/*"
+            onChange={handleFileChange}
+            disabled={loading}
+          />
+          <button onClick={submitCertificate} disabled={!file || loading}>
             {loading ? 'Processing...' : '✅ Verify Certificate'}
           </button>
         </div>
 
-        {/* ERROR */}
-        {error && (
-          <div className="error-message">
-            {error}
-          </div>
-        )}
+        {error && <div className="error-message">{error}</div>}
 
-        {/* RESULT */}
         {result && (
           <div className={`result ${result.type}`}>
             <h3>{result.message}</h3>
-
             {result.details && (
               <div className="details">
-                <p><strong>Hash:</strong> {result.details.hash}</p>
                 <p><strong>Filename:</strong> {result.details.filename}</p>
+                <p><strong>Hash:</strong> {result.details.hash}</p>
               </div>
             )}
-
             {result.type === 'invalid' && (
-              <p className="tamper-note">
-                💡 File modified or not registered
-              </p>
+              <p>💡 File modified or not registered</p>
             )}
           </div>
         )}
-
-        {/* INFO */}
-        <div className="info">
-          <h4>How it works:</h4>
-          <ul>
-            <li>Upload same file → <span className="success">VALID</span></li>
-            <li>Modified file → <span className="invalid">INVALID</span></li>
-            <li>Hash stored in blockchain-like system</li>
-          </ul>
-        </div>
       </main>
     </div>
   );

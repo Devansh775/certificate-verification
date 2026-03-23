@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -10,49 +12,65 @@ const PORT = process.env.PORT || 5000;
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-let certificates = [];
-
+// File storage in memory
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Hash
+// Persistent JSON file
+const CERT_FILE = path.resolve('./certificates.json');
+let certificates = [];
+if (fs.existsSync(CERT_FILE)) {
+  certificates = JSON.parse(fs.readFileSync(CERT_FILE, 'utf-8'));
+}
+
+// SHA-256 hash
 function computeHash(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
-// ✅ ROOT (for testing)
+// Save to JSON
+function saveCertificates() {
+  fs.writeFileSync(CERT_FILE, JSON.stringify(certificates, null, 2));
+}
+
+// ROOT
 app.get('/', (req, res) => {
   res.send("Backend is running ✅");
 });
 
-// ✅ HEALTH
+// HEALTH
 app.get('/health', (req, res) => {
   res.json({ status: "OK" });
 });
 
-// ADD
+// ADD certificate
 app.post('/add', upload.single('certificate'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No file uploaded' });
-  }
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
   const hash = computeHash(req.file.buffer);
 
-  certificates.push({
-    hash,
-    filename: req.file.originalname
-  });
+  // Prevent duplicates
+  if (certificates.find(c => c.hash === hash)) {
+    return res.json({ success: false, message: 'Certificate already registered' });
+  }
 
-  res.json({ success: true, hash });
+  const certData = {
+    hash,
+    filename: req.file.originalname,
+    addedAt: new Date().toISOString()
+  };
+
+  certificates.push(certData);
+  saveCertificates();
+
+  res.json({ success: true, message: 'Certificate added ✅', details: certData });
 });
 
-// VERIFY
+// VERIFY certificate
 app.post('/verify', upload.single('certificate'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No file uploaded' });
-  }
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
   const hash = computeHash(req.file.buffer);
-  const match = certificates.find(cert => cert.hash === hash);
+  const match = certificates.find(c => c.hash === hash);
 
   if (match) {
     return res.json({
@@ -66,7 +84,7 @@ app.post('/verify', upload.single('certificate'), (req, res) => {
   res.json({
     success: true,
     valid: false,
-    message: 'Invalid Certificate ❌'
+    message: 'Invalid Certificate ❌\n💡 File modified or not registered'
   });
 });
 
