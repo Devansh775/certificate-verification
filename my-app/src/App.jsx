@@ -7,7 +7,7 @@ function App() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
-  const API_BASE = 'http://localhost:5000';
+  const API_BASE = 'https://your-backend.onrender.com';
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
