@@ -7,7 +7,8 @@ function App() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
-  const API_BASE = 'https://your-backend.onrender.com';
+  // ✅ PUT YOUR REAL RENDER BACKEND URL HERE
+  const API_BASE = 'https://certificate-verification-2.onrender.com';
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
@@ -36,17 +37,21 @@ function App() {
 
       const data = await response.json();
 
-      if (data.success) {
+      // ✅ FIXED CONDITION
+      if (data.valid !== undefined) {
         setResult({
           type: data.valid ? 'success' : 'invalid',
-          message: data.message,
-          details: data.valid ? data.details : null
+          message: data.valid
+            ? 'Valid Certificate ✅'
+            : 'Invalid Certificate ❌',
+          details: data.details || null
         });
       } else {
         setError(data.error || 'Request failed');
       }
+
     } catch (err) {
-      setError('Server connection failed. Ensure backend is running on port 5000.');
+      setError('❌ Server not reachable. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -84,37 +89,40 @@ function App() {
           </button>
         </div>
 
+        {/* ERROR */}
         {error && (
           <div className="error-message">
-            ❌ {error}
+            {error}
           </div>
         )}
 
+        {/* RESULT */}
         {result && (
           <div className={`result ${result.type}`}>
             <h3>{result.message}</h3>
+
             {result.details && (
               <div className="details">
                 <p><strong>Hash:</strong> {result.details.hash}</p>
                 <p><strong>Filename:</strong> {result.details.filename}</p>
-                {result.details.timestamp && (
-                  <p><strong>Timestamp:</strong> {new Date(result.details.timestamp).toLocaleString()}</p>
-                )}
               </div>
             )}
+
             {result.type === 'invalid' && (
-              <p className="tamper-note">💡 File modified or not registered.</p>
+              <p className="tamper-note">
+                💡 File modified or not registered
+              </p>
             )}
           </div>
         )}
 
+        {/* INFO */}
         <div className="info">
           <h4>How it works:</h4>
           <ul>
-            <li>Upload exact same file → <span className="success">VALID</span></li>
-            <li>Modified/tampered file → <span className="invalid">INVALID</span></li>
-            <li>Hash stored in blockchain-like ledger (in-memory)</li>
-            <li><strong>Admin registration now backend-only (use /add API)</strong></li>
+            <li>Upload same file → <span className="success">VALID</span></li>
+            <li>Modified file → <span className="invalid">INVALID</span></li>
+            <li>Hash stored in blockchain-like system</li>
           </ul>
         </div>
       </main>
