@@ -2,142 +2,106 @@ import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import crypto from 'crypto';
-import fs from 'fs/promises';
+import fs from 'fs';
 import path from 'path';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const FRONTEND_URL = process.env.FRONTEND_URL || '*';
 
-// Path to certificates DB and folder
-const CERTIFICATES_FOLDER = path.join(process.cwd(), 'certificates_files');
-const SAMPLE_CERT_PATH = path.join(process.cwd(), 'certificates', 'sample.pdf'); // ✅ relative path
-
-// Folder for uploaded certificates
-
-
-app.use(cors({ origin: FRONTEND_URL, credentials: true }));
+// CORS
+app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '10mb' }));
 
-// Ensure upload folder exists
-await fs.mkdir(CERTIFICATES_FOLDER, { recursive: true });
+// Multer in-memory storage
+const upload = multer({ storage: multer.memoryStorage() });
 
-// Multer storage for new uploads
-const storage = multer.diskStorage({
-  destination: CERTIFICATES_FOLDER,
-  filename: (req, file, cb) => {
-    const uniqueName = `${Date.now()}-${file.originalname}`;
-    cb(null, uniqueName);
-  }
-});
-const upload = multer({ storage });
+// Certificates DB
+const CERT_FILE = path.join(process.cwd(), 'certificates.json');
+const SAMPLE_CERT_PATH = path.join(process.cwd(), 'certificates', 'sample.pdf');
 
-// Hash function
-function computeHash(buffer) {
-  return crypto.createHash('sha256').update(buffer).digest('hex');
+// Load existing certificates
+let certificates = [];
+if (fs.existsSync(CERT_FILE)) {
+  certificates = JSON.parse(fs.readFileSync(CERT_FILE, 'utf-8'));
 }
 
-// Load certificates
-async function loadCertificates() {
-  let certs = [];
-
-  // Load existing DB if exists
-  try {
-    const data = await fs.readFile(CERTIFICATES_DB, 'utf8');
-    certs = JSON.parse(data);
-  } catch {}
-
-  // ✅ Add sample certificate if not already in DB
-  try {
-    const buffer = await fs.readFile(SAMPLE_CERT_PATH);
-    const hash = computeHash(buffer);
-    if (!certs.find(c => c.hash === hash)) {
-      certs.push({
-        hash,
-        filename: path.basename(SAMPLE_CERT_PATH),
-        size: buffer.length,
-        path: SAMPLE_CERT_PATH,
-        timestamp: new Date().toISOString()
-      });
-    }
-  } catch (err) {
-    console.warn('Sample certificate not found at path:', SAMPLE_CERT_PATH);
-  }
-
-  // Save updated DB
-  await fs.writeFile(CERTIFICATES_DB, JSON.stringify(certs, null, 2));
-  return certs;
-}
-
-// Load certificates on startup
-let certificates = await loadCertificates();
-
-// Routes
-
-app.get('/health', (req, res) => res.json({ status: 'OK', certificates: certificates.length }));
-
-app.get('/certificates', (req, res) => res.json(certificates));
-
-app.post('/add', upload.single('certificate'), async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-
-    const buffer = await fs.readFile(req.file.path);
-    const hash = computeHash(buffer);
-
-    if (certificates.find(c => c.hash === hash)) {
-      return res.json({ success: true, message: 'Certificate already registered', existing: true });
-    }
-
-    const cert = {
+// Preload sample certificate if not already in DB
+try {
+  const buffer = fs.readFileSync(SAMPLE_CERT_PATH);
+  const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+  if (!certificates.find(c => c.hash === hash)) {
+    certificates.push({
       hash,
-      filename: req.file.originalname,
-      size: req.file.size,
-      path: req.file.path,
-      timestamp: new Date().toISOString()
-    };
-
-    certificates.push(cert);
-    await fs.writeFile(CERTIFICATES_DB, JSON.stringify(certificates, null, 2));
-
-    res.json({ success: true, message: 'Certificate registered successfully ✅', ...cert });
-  } catch (err) {
-    res.status(500).json({ error: 'Server error', details: err.message });
+      filename: 'sample.pdf',
+      path: SAMPLE_CERT_PATH,
+      addedAt: new Date().toISOString()
+    });
+    fs.writeFileSync(CERT_FILE, JSON.stringify(certificates, null, 2));
+    console.log('Sample certificate loaded ✅');
   }
+} catch (err) {
+  console.warn('Sample certificate not found:', SAMPLE_CERT_PATH);
+}
+
+// Save helper
+function saveCertificates() {
+  fs.writeFileSync(CERT_FILE, JSON.stringify(certificates, null, 2));
+}
+
+// ROOT
+app.get('/', (req, res) => res.send("Backend is running ✅"));
+
+// HEALTH
+app.get('/health', (req, res) => res.json({ status: "OK", certificates: certificates.length }));
+
+// ADD certificate
+app.post('/add', upload.single('certificate'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+  const hash = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
+
+  if (certificates.find(c => c.hash === hash)) {
+    return res.json({ success: false, message: 'Certificate already registered' });
+  }
+
+  const certData = {
+    hash,
+    filename: req.file.originalname,
+    addedAt: new Date().toISOString()
+  };
+
+  certificates.push(certData);
+  saveCertificates();
+
+  res.json({ success: true, message: 'Certificate added ✅', details: certData });
 });
 
-app.post('/verify', upload.single('certificate'), async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+// VERIFY certificate
+app.post('/verify', upload.single('certificate'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-    const buffer = await fs.readFile(req.file.path);
-    const hash = computeHash(buffer);
+  const hash = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
+  const match = certificates.find(c => c.hash === hash);
 
-    const match = certificates.find(c => c.hash === hash);
-    if (match) {
-      res.json({ success: true, valid: true, message: 'Valid Certificate ✅', details: match });
-    } else {
-      res.json({ success: true, valid: false, message: 'Certificate not found or tampered ❌' });
-    }
-  } catch (err) {
-    res.status(500).json({ error: 'Server error', details: err.message });
+  if (match) {
+    return res.json({
+      success: true,
+      valid: true,
+      message: 'Valid Certificate ✅',
+      details: match
+    });
   }
-});
 
-app.get('/', (req, res) => {
   res.json({
-    message: 'Certificate Verification API ✅',
-    endpoints: {
-      add: 'POST /add (multipart/form-data, certificate=file)',
-      verify: 'POST /verify (multipart/form-data, certificate=file)',
-      list: 'GET /certificates',
-      health: 'GET /health'
-    }
+    success: true,
+    valid: false,
+    message: 'Invalid Certificate ❌\n💡 File modified or not registered'
   });
 });
 
+// Start server
 app.listen(PORT, () => {
   console.log(`🚀 Backend running on port ${PORT}`);
-  console.log(`📁 Sample certificate loaded from: ${SAMPLE_CERT_PATH}`);
+  console.log(`📁 Certificates DB: ${CERT_FILE}`);
   console.log(`📊 Loaded ${certificates.length} certificates`);
 });
