@@ -10,12 +10,11 @@ const PORT = process.env.PORT || 5000;
 const FRONTEND_URL = process.env.FRONTEND_URL || '*';
 
 // Path to certificates DB and folder
-const CERTIFICATES_DB = path.join(process.cwd(), 'certificates.json');
-// ✅ Preload your sample certificate
-const SAMPLE_CERT_PATH = 'C:/Users/patel/Documents/MY website/backend/certificates/sample.pdf';
+const CERTIFICATES_FOLDER = path.join(process.cwd(), 'certificates_files');
+const SAMPLE_CERT_PATH = path.join(process.cwd(), 'certificates', 'sample.pdf'); // ✅ relative path
 
 // Folder for uploaded certificates
-const CERTIFICATES_FOLDER = path.join(process.cwd(), 'certificates_files');
+
 
 app.use(cors({ origin: FRONTEND_URL, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
