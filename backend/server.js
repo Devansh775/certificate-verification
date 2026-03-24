@@ -8,51 +8,63 @@ import path from 'path';
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// CORS
+// CORS - allow all origins for now (can restrict to frontend URL)
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '10mb' }));
 
-// Multer in-memory storage
+// Multer in-memory storage for file uploads
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Certificates DB
+// Certificates DB file
 const CERT_FILE = path.join(process.cwd(), 'certificates.json');
+// Path to sample certificate (must exist in repo)
 const SAMPLE_CERT_PATH = path.join(process.cwd(), 'certificates', 'sample.pdf');
 
-// Load existing certificates
+// Load existing certificates from JSON
 let certificates = [];
 if (fs.existsSync(CERT_FILE)) {
-  certificates = JSON.parse(fs.readFileSync(CERT_FILE, 'utf-8'));
+  try {
+    certificates = JSON.parse(fs.readFileSync(CERT_FILE, 'utf-8'));
+  } catch (err) {
+    console.warn('Error reading certificates.json:', err);
+    certificates = [];
+  }
 }
 
 // Preload sample certificate if not already in DB
 try {
-  const buffer = fs.readFileSync(SAMPLE_CERT_PATH);
-  const hash = crypto.createHash('sha256').update(buffer).digest('hex');
-  if (!certificates.find(c => c.hash === hash)) {
-    certificates.push({
-      hash,
-      filename: 'sample.pdf',
-      path: SAMPLE_CERT_PATH,
-      addedAt: new Date().toISOString()
-    });
-    fs.writeFileSync(CERT_FILE, JSON.stringify(certificates, null, 2));
-    console.log('Sample certificate loaded ✅');
+  if (fs.existsSync(SAMPLE_CERT_PATH)) {
+    const buffer = fs.readFileSync(SAMPLE_CERT_PATH);
+    const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+    if (!certificates.find(c => c.hash === hash)) {
+      certificates.push({
+        hash,
+        filename: 'sample.pdf',
+        path: SAMPLE_CERT_PATH,
+        addedAt: new Date().toISOString()
+      });
+      fs.writeFileSync(CERT_FILE, JSON.stringify(certificates, null, 2));
+      console.log('✅ Sample certificate loaded');
+    }
+  } else {
+    console.warn('⚠ Sample certificate not found:', SAMPLE_CERT_PATH);
   }
 } catch (err) {
-  console.warn('Sample certificate not found:', SAMPLE_CERT_PATH);
+  console.error('Error loading sample certificate:', err);
 }
 
-// Save helper
+// Helper to save certificates to file
 function saveCertificates() {
   fs.writeFileSync(CERT_FILE, JSON.stringify(certificates, null, 2));
 }
 
-// ROOT
-app.get('/', (req, res) => res.send("Backend is running ✅"));
+// ROOT route
+app.get('/', (req, res) => res.send('Backend is running ✅'));
 
-// HEALTH
-app.get('/health', (req, res) => res.json({ status: "OK", certificates: certificates.length }));
+// HEALTH check
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', certificates: certificates.length });
+});
 
 // ADD certificate
 app.post('/add', upload.single('certificate'), (req, res) => {
