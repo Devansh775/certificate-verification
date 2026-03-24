@@ -8,14 +8,19 @@ import path from 'path';
 const app = express();
 const PORT = process.env.PORT || 5000;
 const FRONTEND_URL = process.env.FRONTEND_URL || '*';
-const CERTIFICATES_DB = path.join(process.cwd(), 'certificates.json');
-const CERTIFICATES_FOLDER = path.join(process.cwd(), 'certificates'); // your folder with sample.pdf
 
-// Middleware
+// Path to certificates DB and folder
+const CERTIFICATES_DB = path.join(process.cwd(), 'certificates.json');
+// ✅ Preload your sample certificate
+const SAMPLE_CERT_PATH = 'C:/Users/patel/Documents/MY website/backend/certificates/sample.pdf';
+
+// Folder for uploaded certificates
+const CERTIFICATES_FOLDER = path.join(process.cwd(), 'certificates_files');
+
 app.use(cors({ origin: FRONTEND_URL, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 
-// Ensure certificates folder exists
+// Ensure upload folder exists
 await fs.mkdir(CERTIFICATES_FOLDER, { recursive: true });
 
 // Multer storage for new uploads
@@ -33,36 +38,34 @@ function computeHash(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
-// Load existing certificates from folder and JSON
+// Load certificates
 async function loadCertificates() {
   let certs = [];
-  
-  // 1️⃣ Load from JSON if exists
+
+  // Load existing DB if exists
   try {
     const data = await fs.readFile(CERTIFICATES_DB, 'utf8');
     certs = JSON.parse(data);
   } catch {}
 
-  // 2️⃣ Scan folder for any PDF files not in JSON yet
-  const files = await fs.readdir(CERTIFICATES_FOLDER);
-  for (const file of files) {
-    const fullPath = path.join(CERTIFICATES_FOLDER, file);
-    const buffer = await fs.readFile(fullPath);
+  // ✅ Add sample certificate if not already in DB
+  try {
+    const buffer = await fs.readFile(SAMPLE_CERT_PATH);
     const hash = computeHash(buffer);
-
-    // Add only if not already in certs
     if (!certs.find(c => c.hash === hash)) {
       certs.push({
         hash,
-        filename: file,
+        filename: path.basename(SAMPLE_CERT_PATH),
         size: buffer.length,
-        path: fullPath,
+        path: SAMPLE_CERT_PATH,
         timestamp: new Date().toISOString()
       });
     }
+  } catch (err) {
+    console.warn('Sample certificate not found at path:', SAMPLE_CERT_PATH);
   }
 
-  // Save updated JSON
+  // Save updated DB
   await fs.writeFile(CERTIFICATES_DB, JSON.stringify(certs, null, 2));
   return certs;
 }
@@ -70,17 +73,12 @@ async function loadCertificates() {
 // Load certificates on startup
 let certificates = await loadCertificates();
 
-// Routes remain the same...
+// Routes
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'OK', certificates: certificates.length });
-});
+app.get('/health', (req, res) => res.json({ status: 'OK', certificates: certificates.length }));
 
-// List all certificates
 app.get('/certificates', (req, res) => res.json(certificates));
 
-// Add certificate
 app.post('/add', upload.single('certificate'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
@@ -109,7 +107,6 @@ app.post('/add', upload.single('certificate'), async (req, res) => {
   }
 });
 
-// Verify certificate
 app.post('/verify', upload.single('certificate'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
@@ -128,7 +125,6 @@ app.post('/verify', upload.single('certificate'), async (req, res) => {
   }
 });
 
-// Root route
 app.get('/', (req, res) => {
   res.json({
     message: 'Certificate Verification API ✅',
@@ -141,9 +137,8 @@ app.get('/', (req, res) => {
   });
 });
 
-// Listen
 app.listen(PORT, () => {
   console.log(`🚀 Backend running on port ${PORT}`);
-  console.log(`📁 Certificates folder: ${CERTIFICATES_FOLDER}`);
+  console.log(`📁 Sample certificate loaded from: ${SAMPLE_CERT_PATH}`);
   console.log(`📊 Loaded ${certificates.length} certificates`);
 });
